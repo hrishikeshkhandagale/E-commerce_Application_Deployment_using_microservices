@@ -15,10 +15,12 @@ pipeline {
     stages {
 
         stage('Git Checkout') {
-            steps {
-                git 'https://github.com/hrishikeshkhandagale/E-commerce_Application_Deployment_using_microservices.git'
-            }
-        }
+    steps {
+        git branch: 'main',
+            url: 'https://github.com/hrishikeshkhandagale/E-commerce_Application_Deployment_using_microservices.git'
+    }
+}
+
 
         stage('Compile') {
             steps {
