@@ -1,0 +1,138 @@
+pipline {
+    agent any
+
+    tool {
+        jdk 'jdk 17'
+        maven 'maven'
+    }
+    environment {
+        SCANNER_HOME =tool'sonar-scanner'
+        DOCKER_IMAGE= "iamhrishikesh/ecommerce:latest"
+    }
+    stage {
+        stage('Git Checkout'){
+            steps{
+                git 'https://github.com/hrishikeshkhandagale/E-commerce_Application_Deployment_using_microservices.git'
+            }
+        }
+        stage('Compile'){
+            steps{
+                sh "mvn compile"
+            }
+        }
+        stage('Test'){
+            steps{
+                sh "mvn test-DskipTests=true"
+            }
+        }
+        stage('File System Scan'){
+            steps {
+                Sh "trivy fs --format table -o trivy-fs-report.html."
+
+            }
+        }
+        stage('SonarQube Analysis') {
+            steps{
+                withSonarQubeEnv('sonar'){
+                    sh "
+                    $SCANNER_HOME/bin/sonar-scanner\
+                    -Dsonar.projectName=ECommerce\
+                    -Dsonar.projectKey=ECommerce\
+                    -Dsonar.java.binaries=target/classes
+                    "
+                }
+            }
+
+        }
+        stage('Build'){
+            steps{
+                sh " mvn package-DskipTests=true"
+            }
+        }
+        stage('Publish to Nexus'){
+            steps{
+                withMaven(globleMavenSettingsConfig:'maven-setting',jdk:'jdk17',maven:'maven'){
+                    sh "mvn deploy -DiskTest=true"
+                }
+            }
+
+
+        }
+        stage('Docker Build & Tag'){
+            steps{
+            script {
+                withDockerRegistry(credentialsId:'docker-cred',toolName:'docker'){
+                   sh "docker build -t ${DOCKER_IMAGE}."
+
+                }
+            }
+        }
+
+        } 
+        stage(' Docker Image Scan'){
+            steps{
+                sh " trivy image --format table -o trivy-image-report.html ${DOCKER_IMAGE}"
+                archiveArtifacts: 'trivy-image-report.html',fingerprint:true
+            }
+
+        }
+        stage('push Docker Image') {
+            steps{ 
+                script {
+                    withDockerRegistry(credentialsId:'docker-cred',toolName:'docker'){
+                        sh "docker push ${DOCKER_IMAGE}"
+
+                    }
+                }
+            }
+        }
+        stage('Deploy to container'){
+            steps{
+                script{
+                    sh "docker stop ecommerce-container || true && docker rm ecommerce-container || true"
+                    sh "docker run -d --name ecommerce-container -p 8083:8080${DOCKER_IMAGE}"
+
+                }
+            }
+
+        }
+
+      } 
+      post {
+        always{
+        script{
+            def jobName = env.JOB_NAME
+            def buildNumber = env.BUILD_NUMBER
+            def pipelineStatus = currentBuild.ruslt ?:'SUCCESS'
+            def bannerColor = pipelineStatus.toUpperCase()=='SUCCESS'? 'green' : 'red'
+
+            def body = "
+            <html>
+            <body>
+            <div style= "border: 4px solid ${bannerColor}; padding: 10x;">
+            <h2>n${jobName} - Build ${buildNumber}</h2>
+            <div style="background-color: ${bannerColor};padding:10px;">
+            <h3 style="color:white;">pipelineStatus: ${pipelineStatus.toUpperCase()}</h3>
+            </div>
+            <p> Check the <a herf="${BUILD_URL}">console output</a>.</p>
+            </body>
+            </html>
+            "
+            emailext(
+                subject: "${jobName} - Build $ {buildNumber} - ${pipelineStatus.toUpperCase()}",
+                body: body
+                to: 'khandagalehrishikesh7@gmail.com'
+                from:'jenkins@example.com',
+                replyTo:'jenkins@example.com',
+                mimeType:'text/html',
+                attachmentsPattern: 'trivy-image-report.html'
+
+            )
+
+        }
+      }
+
+      }
+
+
+}
