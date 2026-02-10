@@ -2,9 +2,10 @@ pipeline {
     agent any
 
     tools {
-        jdk 'jdk17'
-        maven 'maven'
-    }
+    jdk 'dk-17j'
+    maven 'maven'
+}
+
 
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
